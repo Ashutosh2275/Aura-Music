@@ -2,7 +2,10 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from backend.app.main import app
 from backend.app.services.recommendation import ContentBasedRecommender
-from backend.app.adapters.music_provider import PermittedCreativeCommonsProvider
+from backend.app.adapters.music_provider import (
+    PermittedCreativeCommonsProvider,
+    JamendoMusicProvider,
+)
 
 
 @pytest.mark.asyncio
@@ -154,3 +157,23 @@ async def test_recommendation_v1_unit():
     assert len(recs) <= 2
     # Ensure history item is not recommended
     assert all(r.id != "trk_cc_01" for r in recs)
+
+
+@pytest.mark.asyncio
+async def test_jamendo_provider_fallback_when_no_client_id():
+    provider = JamendoMusicProvider(client_id="")
+    trending = await provider.get_trending(limit=2)
+    assert len(trending) >= 1
+    assert trending[0].source_provider == "creative_commons"
+
+    track = await provider.get_track("trk_cc_01")
+    assert track is not None
+    assert track.title == "Aura of Serenity"
+
+
+@pytest.mark.asyncio
+async def test_jamendo_provider_trending():
+    provider = JamendoMusicProvider(client_id="abe76907")
+    trending = await provider.get_trending(limit=3)
+    assert len(trending) >= 1
+    assert trending[0].audio_url != ""

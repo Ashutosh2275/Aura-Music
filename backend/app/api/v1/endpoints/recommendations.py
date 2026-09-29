@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Query
 from typing import List
 from backend.app.models.track import Track
-from backend.app.adapters.music_provider import PermittedCreativeCommonsProvider
+from backend.app.adapters.music_provider import get_music_provider
 from backend.app.services.recommendation import ContentBasedRecommender
 
 router = APIRouter()
-provider = PermittedCreativeCommonsProvider()
+provider = get_music_provider()
 recommender = ContentBasedRecommender()
 
 
