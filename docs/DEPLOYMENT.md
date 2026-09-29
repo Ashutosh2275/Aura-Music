@@ -1,38 +1,52 @@
-# Deployment & Build Architecture (Windows 11 → iOS EAS)
+# Deployment & Testing Architecture (Windows 11 → iPhone 16 PWA)
 
-## 1. Development & Native Build Topology
+## 1. Local Development on Windows 11
 
-Because the development environment is Windows 11 without a local macOS workstation or Xcode, all iOS native binary compilation occurs in cloud-managed infrastructure via **Expo Application Services (EAS Build)**.
+All development is carried out locally on Windows 11. No Mac, Xcode, or Apple Developer tooling is required.
 
 ```
-[Windows 11 Dev Workstation]
+[Windows 11 Development Machine]
        │
-       ├── Code Editing (VS Code / Antigravity)
-       ├── Type Checking (`tsc`) & Unit Tests (`jest`, `pytest`)
-       ├── Expo Config Plugins (`app.json` / `app.config.ts`)
+       ├── Frontend Dev Server (`npm run dev -- --host`)
+       │    └── Serves Vite PWA on local Wi-Fi port (e.g. `http://192.168.1.X:5173`)
        │
-       ▼
-   [EAS CLI (`eas build --platform ios --profile development`)]
+       ├── Backend Dev Server (`uvicorn backend.app.main:app --host 0.0.0.0 --port 8000`)
+       │    └── Serves FastAPI `/api/v1` routes
        │
-       ▼
-[Expo Cloud macOS Runners (Automated Xcode compilation)]
+       ▼ (Direct Wi-Fi / Local Network or Cloudflare Tunnel)
+[Physical iPhone 16 (Safari)]
        │
-       ▼
-[Apple Developer Portal (Provisions, Certificates, iPhone 16 UDID)]
-       │
-       ▼
-[iOS Ad-hoc / Development Build Artifact (.ipa)]
-       │
-       ▼
-[Physical iPhone 16 (Installed via QR Code / Apple Configurator)]
+       └── Tap Share ➔ "Add to Home Screen" ➔ Standalone PWA Installed
 ```
 
-## 2. EAS Build Configuration (`eas.json`)
-- **`development` Profile**: Produces an internal development client build (`.ipa`) registered to the human developer's physical iPhone 16 UDID. Enables hot reloading and JS debugging on device with full native audio libraries.
-- **`preview` Profile**: Ad-hoc distribution builds for staging.
-- **`production` Profile**: App Store Connect distribution builds.
+## 2. Testing on Physical iPhone 16 from Windows 11
 
-## 3. Backend Deployment
-- **Containerization**: Backend packaged via Docker (`Dockerfile`).
-- **Cloud Run / Container PaaS**: Scalable, serverless container execution for FastAPI.
-- **Secrets Management**: Backend secrets (Firebase Service Account, Redis credentials, Jamendo API Client ID) are supplied via environment variables at runtime, never bundled into mobile app binaries.
+### Option A: Local Wi-Fi Network
+1. Ensure Windows 11 PC and iPhone 16 are on the same local Wi-Fi network.
+2. In Windows terminal, find your local IP address:
+   ```powershell
+   ipconfig
+   # Note IPv4 Address (e.g., 192.168.1.100)
+   ```
+3. Start frontend with host exposed:
+   ```powershell
+   cd frontend
+   npm run dev -- --host
+   ```
+4. On iPhone 16, open Safari and navigate to:
+   `http://<YOUR_WINDOWS_IP>:5173`
+5. Tap Share → **Add to Home Screen**.
+
+### Option B: Cloudflare Tunnel (HTTPS for PWA & Service Workers)
+Service workers and Media Session require secure origins (`localhost` or `https://`). For full PWA testing over Wi-Fi, run a zero-setup Cloudflare tunnel:
+```powershell
+# Using cloudflared or localtunnel
+npx localtunnel --port 5173
+```
+Open the generated `https://*.loca.lt` URL in iPhone 16 Safari.
+
+## 3. Production Deployment
+
+- **Frontend**: Deploy static dist output (`frontend/dist`) to Cloudflare Pages, Vercel, or AWS S3 + CloudFront.
+- **Backend**: Deploy containerized FastAPI application via Docker (`backend/Dockerfile`) to Google Cloud Run, Fly.io, or Railway.
+- **Data**: Connect Google Cloud Firestore and Redis Cloud via environment variables.

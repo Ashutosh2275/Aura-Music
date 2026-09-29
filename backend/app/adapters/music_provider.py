@@ -1,20 +1,33 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from backend.app.models.track import Track, ArtistRef, AlbumRef
+from backend.app.models.track import Track, Artist, Album, StreamInfo, ArtistRef, AlbumRef
 
 
-class MusicProviderAdapter(ABC):
+class MusicProvider(ABC):
     """
-    Abstract interface for music catalog and stream providers.
-    Enforces compliance with provider terms and uniform metadata extraction.
+    Abstract interface for permitted music providers.
+    All external provider specifics, licensing constraints, rate limits,
+    and authentication remain strictly inside this adapter layer.
     """
+
+    @abstractmethod
+    async def search_tracks(self, query: str, limit: int = 20, offset: int = 0) -> List[Track]:
+        pass
 
     @abstractmethod
     async def get_track(self, track_id: str) -> Optional[Track]:
         pass
 
     @abstractmethod
-    async def search(self, query: str, limit: int = 20, offset: int = 0) -> List[Track]:
+    async def get_artist(self, artist_id: str) -> Optional[Artist]:
+        pass
+
+    @abstractmethod
+    async def get_album(self, album_id: str) -> Optional[Album]:
+        pass
+
+    @abstractmethod
+    async def get_stream(self, track_id: str) -> Optional[StreamInfo]:
         pass
 
     @abstractmethod
@@ -22,9 +35,10 @@ class MusicProviderAdapter(ABC):
         pass
 
 
-class PermittedCreativeCommonsProvider(MusicProviderAdapter):
+class PermittedCreativeCommonsProvider(MusicProvider):
     """
-    In-memory / direct CC catalog adapter complying with strict open licensing terms.
+    Default permitted music provider adhering strictly to Creative Commons / Open Access licensing.
+    Never scrapes or bypasses proprietary restricted catalogs.
     """
 
     def __init__(self):
@@ -83,13 +97,7 @@ class PermittedCreativeCommonsProvider(MusicProviderAdapter):
             ),
         ]
 
-    async def get_track(self, track_id: str) -> Optional[Track]:
-        for t in self._tracks:
-            if t.id == track_id:
-                return t
-        return None
-
-    async def search(self, query: str, limit: int = 20, offset: int = 0) -> List[Track]:
+    async def search_tracks(self, query: str, limit: int = 20, offset: int = 0) -> List[Track]:
         q = query.lower()
         matched = [
             t
@@ -97,8 +105,51 @@ class PermittedCreativeCommonsProvider(MusicProviderAdapter):
             if q in t.title.lower()
             or q in t.artist.name.lower()
             or any(q in tag.lower() for tag in t.tags)
+            or any(q in g.lower() for g in t.genre)
         ]
         return matched[offset : offset + limit]
+
+    async def get_track(self, track_id: str) -> Optional[Track]:
+        for t in self._tracks:
+            if t.id == track_id:
+                return t
+        return None
+
+    async def get_artist(self, artist_id: str) -> Optional[Artist]:
+        artist_tracks = [t for t in self._tracks if t.artist.id == artist_id]
+        if not artist_tracks:
+            return None
+        return Artist(
+            id=artist_id,
+            name=artist_tracks[0].artist.name,
+            bio="Independent artist publishing under open Creative Commons licensing.",
+            artwork_url=artist_tracks[0].artwork_url,
+            tracks=artist_tracks,
+        )
+
+    async def get_album(self, album_id: str) -> Optional[Album]:
+        album_tracks = [t for t in self._tracks if t.album and t.album.id == album_id]
+        if not album_tracks:
+            return None
+        return Album(
+            id=album_id,
+            title=album_tracks[0].album.title,
+            artist=album_tracks[0].artist,
+            artwork_url=album_tracks[0].artwork_url,
+            tracks=album_tracks,
+            release_date="2024-01-01",
+        )
+
+    async def get_stream(self, track_id: str) -> Optional[StreamInfo]:
+        track = await self.get_track(track_id)
+        if not track:
+            return None
+        return StreamInfo(
+            track_id=track.id,
+            audio_url=track.audio_url,
+            format="audio/mp3",
+            bitrate_kbps=192,
+        )
 
     async def get_trending(self, limit: int = 20) -> List[Track]:
         return self._tracks[:limit]

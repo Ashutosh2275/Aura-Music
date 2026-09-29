@@ -1,77 +1,71 @@
 # System Architecture
 
-## 1. High-Level Overview
+## 1. High-Level Architecture Overview
 
-This project is a privacy-first, ad-free music streaming and discovery application optimized for iOS (specifically iPhone 16) engineered from a Windows 11 host environment via Expo EAS (Expo Application Services).
+**Aura Music** is a minimal, privacy-first, ad-free music streaming and discovery Progressive Web Application (PWA) engineered specifically for **iPhone 16** (Safari → Add to Home Screen), developed entirely from a **Windows 11** development workstation.
 
 ```mermaid
 flowchart TD
-    subgraph Client["iOS Mobile Client (React Native + Expo EAS)"]
-        UI["UI Screens (Explore, Search, Library, Player)"]
+    subgraph Client["iPhone 16 PWA Client (Safari Standalone)"]
+        UI["React UI (Home, Search, Library, Mini & Full Player)"]
         State["State Layer (Zustand & TanStack Query)"]
-        PlayerController["Global Player Controller Singleton"]
-        AudioEngine["Native Audio Engine (react-native-track-player)"]
-        NowPlaying["iOS MPRemoteCommandCenter & MPNowPlayingInfoCenter"]
+        PlayerController["Global Player Controller (Store)"]
+        AudioEngine["Audio Engine Singleton (HTMLAudioElement)"]
+        MediaSession["Media Session API (iOS Lock Screen / Control Center)"]
+        SW["Service Worker (App Shell Precache & Offline Fallback)"]
         
         UI --> State
         UI --> PlayerController
         PlayerController --> AudioEngine
-        AudioEngine --> NowPlaying
+        AudioEngine --> MediaSession
     end
 
-    subgraph ExternalAudio["Permitted Music CDN / Content Providers"]
-        Jamendo["Jamendo API / Free Audio CDN"]
-        Audius["Audius Decentralized Audio Gateway"]
-        Archive["Free Music Archive / Archive.org"]
+    subgraph CDN["Permitted Music Streaming CDN"]
+        CCStream["Direct Licensed / CC Audio Stream CDN"]
     end
 
     subgraph Backend["Scalable Backend (FastAPI / Python 3.11)"]
-        API["FastAPI Gateway (/v1)"]
-        CatalogSvc["Catalog & Search Service"]
-        UserSvc["User & Playlist Service"]
-        TelemetrySvc["Pseudonymous Interaction Logger"]
-        RecSvc["Recommendation Service (Modular Scikit-Learn Engine)"]
-        ProviderAdapter["Music Provider Abstraction Adapter"]
+        API["FastAPI Gateway (/api/v1)"]
+        Provider["MusicProvider Adapter Abstraction"]
+        RecEngine["Scikit-Learn Recommendation Engine"]
+        UserSvc["Pseudonymous User & Library Service"]
+        EventSvc["Minimal Telemetry Logger"]
         
-        API --> CatalogSvc
+        API --> Provider
+        API --> RecEngine
         API --> UserSvc
-        API --> TelemetrySvc
-        API --> RecSvc
-        CatalogSvc --> ProviderAdapter
-        ProviderAdapter --> ExternalAudio
+        API --> EventSvc
+        Provider --> CCStream
     end
 
-    subgraph DataLayer["Persistence & Caching"]
-        Firestore["Google Cloud Firestore (Metadata & Profiles)"]
-        Auth["Firebase Anonymous Auth"]
-        Redis["Redis (Hot Caches, Feed Caches, Rate Limits)"]
+    subgraph Storage["Persistence & Caching"]
+        Firestore["Firestore (User Libraries, Playlists, Tracks)"]
+        Redis["Redis (Cache, Trending, Rate Limits)"]
+        Auth["Firebase Anonymous Authentication"]
         
         Backend --> Firestore
-        Backend --> Auth
         Backend --> Redis
+        Backend --> Auth
     end
 
-    AudioEngine -->|Direct Audio Stream (HLS / MP3 / AAC)| ExternalAudio
+    AudioEngine -->|Direct Audio Stream (MP3 / AAC)| CCStream
 ```
 
-## 2. Architectural Boundaries & Principles
+## 2. Core Architectural Pillars
 
-### Separation of Concerns
-1. **Client / Audio Engine Isolation**:
-   - Audio playback runs as an independent native session (`AVAudioSessionCategoryPlayback`).
-   - React components subscribe to playback state via Zustand reactive stores, but never instantiate or control `AVPlayer` instances directly.
-   - Background audio, remote control events (lock screen, Bluetooth, Dynamic Island / Now Playing), and queue auto-advance function seamlessly regardless of active UI screens or app minimization.
+### PWA & Client-Side Media Pipeline
+1. **Single Application-Level Audio Engine**:
+   - One global `HTMLAudioElement` instance lives in `src/audio/audioEngine.ts`.
+   - Audio is decoupled from React component tree renders; route navigation (`/`, `/search`, `/library`) never destroys or re-instantiates the audio element.
+2. **Media Session API & iOS Lock-Screen**:
+   - Updates `navigator.mediaSession.metadata` (title, artist, album, artwork).
+   - Binds action handlers (`play`, `pause`, `nexttrack`, `previoustrack`, `seekbackward`, `seekforward`, `seekto`).
+   - Progressive enhancement: if Media Session is unsupported, standard HTML5 audio playback continues without disruption.
+3. **No Service Worker Audio Hacks**:
+   - Audio streaming is handled exclusively by `HTMLAudioElement` on the main media pipeline.
+   - Service worker is strictly restricted to caching the application shell (HTML, CSS, JS, icons) and metadata responses.
 
-2. **Data Streaming vs. Metadata**:
-   - The backend proxies and standardizes metadata (track title, artist, album art, licensing terms, audio stream URLs) behind a unified schema.
-   - The mobile client streams audio **directly** from authorized CDN endpoints. The backend never proxies heavy audio payloads, preserving bandwidth and minimizing latency.
-
-3. **Stateless API & Distributed Cache**:
-   - FastAPI backend instances are stateless and containerized.
-   - Firestore stores document collections (`users`, `playlists`, `tracks`, `interactions`).
-   - Redis caches expensive search queries, catalog lookups, and personalized candidate recommendations with TTL.
-
-4. **Privacy-by-Design**:
-   - No PII is collected or stored.
-   - Clients authenticate using Firebase Anonymous Auth tokens.
-   - All telemetry events are tied to anonymous UID tokens without device fingerprinting or advertising IDs.
+### Backend & Separation of Concerns
+1. **Separately Deployable**: Frontend (Vite static PWA) and Backend (FastAPI container) operate as independently deployable services.
+2. **Direct CDN Streaming**: The client streams music directly from authorized CDN URLs. The backend proxies metadata and generates recommendations, never wasting bandwidth proxying heavy audio payloads.
+3. **Provider Abstraction**: All external music catalog logic lives behind `MusicProvider` (`search_tracks`, `get_track`, `get_artist`, `get_album`, `get_stream`, `get_trending`).

@@ -1,44 +1,39 @@
-# Audio Player Architecture (iOS & React Native)
+# PWA Audio Player Architecture
 
-## 1. Core Principles & Design
-
-The mobile player architecture adheres to a strict unidirectional flow separated completely from React screen renders:
+## 1. Unidirectional Data Flow
 
 ```
-[UI Layer / Screens]
-       │
-       ▼ (actions: play, pause, seek, skip, setQueue)
-[Player Controller / Store (Zustand)]
-       │
-       ▼ (imperative bridge calls)
-[Audio Service Engine (react-native-track-player)]
-       │
-       ▼ (AVPlayer / AVAudioSession)
-[Native iOS Audio Subsystem]
-       ├── AVAudioSession (Category: .playback, Mode: .default)
-       ├── MPNowPlayingInfoCenter (Track metadata, artwork, scrub position)
-       └── MPRemoteCommandCenter (Lock-screen & Bluetooth controls)
+[React UI: Home / Search / Library / MiniPlayer / FullPlayerModal]
+                   │
+                   ▼ (actions: playTrack, pause, seekTo, skipNext)
+        [Zustand Player Controller Store]
+                   │
+                   ▼ (imperative media engine calls)
+       [AudioEngine Singleton (HTMLAudioElement)]
+          ├── Audio Event Listeners (play, pause, timeupdate, ended)
+          └── Media Session API Adapter
+                   │
+                   ▼
+     [iOS Safari / iPhone 16 Media Session]
+       ├── Lock Screen Now Playing Widget
+       ├── Dynamic Island / Control Center
+       └── Remote Action Handlers (play, pause, nexttrack, previoustrack, seekto)
 ```
 
-## 2. Decoupling Rules
-1. **Never tie player state to screen lifecycles**: Screens only consume reactive Zustand selectors (`usePlayerStore(state => state.currentTrack)`). Leaving a screen or popping navigation never interrupts audio.
-2. **Native iOS Background Audio Configuration**:
-   - `UIBackgroundModes`: includes `audio`.
-   - Native audio session category configured to `playback` with options for mixing and ducking if required.
-   - Remote control events (`remote-play`, `remote-pause`, `remote-next`, `remote-previous`, `remote-seek`) registered directly in a background playback service callback (`service.js` / `playbackService.ts`).
-3. **Queue & Auto-advance**:
-   - Audio tracks are queued in the native player queue.
-   - The native player handles smooth gapless transitions to the next item in the queue.
-   - Playback state events (`playback-track-changed`, `playback-state`) update the Zustand store and notify the telemetry service asynchronously.
+## 2. Hard Architectural Invariants
 
-## 3. Remote Control & Lock-Screen Capabilities
-- **Play / Pause / Toggle**: Immediate response, updates `MPNowPlayingInfoCenter` playback rate.
-- **Next / Previous**: Advances or rewinds in the active queue.
-- **Seek / Scrubbing**: Responds to `MPChangePlaybackPositionCommand` to allow scrubbing on the iOS lock screen and Control Center.
-- **Artwork Rendering**: High-resolution album artwork loaded into lock screen via URL or local cache.
-- **Bluetooth & Car Controls**: Responds to standard AVRCP commands via `MPRemoteCommandCenter`.
-
-## 4. Error Recovery & Network Resilience
-- **Stall & Buffering Detection**: Detects `playback-error` or prolonged buffering.
-- **Exponential Backoff Retry**: When network drops or audio streams stall, the player initiates up to 3 retry attempts with exponential backoff before transitioning to an error state.
-- **Resume on Interruption**: Handles audio session interruptions (incoming phone calls, Siri) gracefully, pausing and automatically resuming if permitted by iOS.
+1. **Single Audio Instance Across Navigation**:
+   - The `HTMLAudioElement` is initialized as a module-level singleton in `src/audio/audioEngine.ts`.
+   - Navigating between pages (`/`, `/search`, `/library`) never re-creates or unmounts the audio element.
+2. **iOS Safari Background & Lock-Screen Playback**:
+   - iOS Safari natively allows audio to continue playing when the screen locks or when switching tabs **provided playback was initiated via a user gesture** (tap/click).
+   - `MediaSession` metadata is updated synchronously with track switches:
+     - `title`, `artist`, `album`, `artwork`
+   - Action handlers (`play`, `pause`, `nexttrack`, `previoustrack`, `seekbackward`, `seekforward`, `seekto`) are wired to the global audio engine.
+3. **No Force-Quit Bypass Claims**:
+   - If the user swipes away Safari or force-quits the PWA from the iOS App Switcher, playback stops per iOS security policy. No hacks or broken headless workarounds are attempted.
+4. **No Service Worker Audio Hacks**:
+   - The service worker is never used to buffer, proxy, or play audio. Audio is handled natively by the browser's hardware-accelerated media pipeline.
+5. **State Ownership**:
+   - **Player Controller (Zustand)** owns: current track, active queue, queue index, status (`idle` | `loading` | `playing` | `paused` | `error`), duration, position, shuffle, repeat mode (`off` | `track` | `queue`).
+   - UI components only subscribe to reactive state slices.

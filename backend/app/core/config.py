@@ -1,11 +1,11 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Aura Music API"
     VERSION: str = "1.0.0"
-    API_V1_STR: str = "/v1"
+    API_V1_STR: str = "/api/v1"
 
     # Environment
     ENVIRONMENT: str = "development"
@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     # Music Provider APIs (Permitted / Creative Commons / Open Access)
     JAMENDO_CLIENT_ID: Optional[str] = None
 
-    class Config:
-        case_sensitive = True
-        env_file = ".env"
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="allow")
 
 
 settings = Settings()

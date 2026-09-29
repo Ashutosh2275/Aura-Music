@@ -1,6 +1,6 @@
 # Data Models & Schemas
 
-## 1. Firestore Document Hierarchy
+## 1. Firestore Document Hierarchy (Backend Source of Truth)
 
 Firestore collections are organized around pseudonymous user references and provider-agnostic music entities:
 
@@ -13,11 +13,11 @@ users/{userId}
   └── playlists/{playlistId}
         └── tracks/{trackItem}
 
-tracks/{trackId} (catalog cache)
+tracks/{trackId} (catalog metadata cache)
 artists/{artistId}
 albums/{albumId}
 
-interactions/{interactionId} (anonymized append-only event stream)
+events/{eventId} (pseudonymous interaction stream)
 ```
 
 ## 2. Core Entities
@@ -27,10 +27,9 @@ interactions/{interactionId} (anonymized append-only event stream)
 interface UserProfile {
   userId: string;          // Anonymous Firebase UID
   createdAt: string;       // ISO 8601
-  lastActiveAt: string;    // ISO 8601
   preferences: {
     audioQuality: 'normal' | 'high';
-    explicitAllowed: boolean;
+    privateSession: boolean;
   };
 }
 ```
@@ -38,50 +37,39 @@ interface UserProfile {
 ### Track Metadata (`tracks/{trackId}`)
 ```typescript
 interface Track {
-  id: string;              // e.g. "jamendo:182940"
+  id: string;              // e.g. "trk_cc_01"
   title: string;
-  artistId: string;
-  artistName: string;
-  albumId?: string;
-  albumTitle?: string;
+  artist: {
+    id: string;
+    name: string;
+  };
+  album?: {
+    id: string;
+    title: string;
+  };
   durationSeconds: number;
-  streamUrl: string;       // Direct audio CDN URL
-  artworkUrl: string;      // Image URL
+  audioUrl: string;        // Direct audio CDN URL
+  artworkUrl?: string;     // High-res image URL
+  license: string;         // e.g. "Creative Commons CC-BY 4.0"
+  sourceProvider: string;  // e.g. "creative_commons"
   genre: string[];
   tags: string[];
-  bpm?: number;
-  license: string;         // e.g. "Creative Commons BY-NC-SA 4.0"
-  provider: 'jamendo' | 'audius' | 'freemusicarchive' | 'custom';
-  sourceId: string;
-  createdAt: string;
 }
 ```
 
-### Interaction Telemetry (`interactions/{interactionId}`)
-Used strictly to power user discovery and the recommendation engine:
+### Interaction Telemetry (`events/{eventId}`)
+Used strictly to power recommendations without collecting PII:
 ```typescript
-interface UserInteractionEvent {
-  id: string;
-  userId: string;          // Anonymous UID
+interface InteractionEvent {
+  eventType: 'search' | 'play_start' | 'listen_30s' | 'complete' | 'skip' | 'like' | 'add_to_playlist';
   trackId: string;
-  eventType: 'impression' | 'search' | 'play_start' | 'listen_30s' | 'complete' | 'skip' | 'like' | 'unlike' | 'add_to_playlist';
+  timestamp: string;
   playbackDurationSeconds: number;
-  timestamp: string;       // ISO 8601
-  context: 'discovery' | 'search' | 'playlist' | 'queue' | 'recommendations';
+  completed: boolean;
 }
 ```
 
-### Playlist Document (`users/{userId}/playlists/{playlistId}`)
-```typescript
-interface Playlist {
-  id: string;
-  ownerId: string;
-  title: string;
-  description?: string;
-  isPublic: boolean;
-  artworkUrl?: string;
-  trackCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-```
+## 3. PWA Client Offline Persistence (IndexedDB & LocalStorage)
+- `aura_likes`: List of track IDs marked as favorites.
+- `aura_recent`: List of the last 20 played tracks with full metadata for offline replay.
+- `aura_preferences`: Client playback settings (shuffle, repeat mode).

@@ -7,6 +7,7 @@ router = APIRouter()
 _TELEMETRY_LOGS = []
 
 
+@router.post("/events", status_code=status.HTTP_202_ACCEPTED)
 @router.post("/telemetry/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_telemetry(payload: BatchTelemetryRequest):
     """

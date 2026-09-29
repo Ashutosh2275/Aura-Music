@@ -9,6 +9,7 @@ provider = PermittedCreativeCommonsProvider()
 recommender = ContentBasedRecommender()
 
 
+@router.get("/recommendations", response_model=List[Track])
 @router.get("/recommendations/personalized", response_model=List[Track])
 async def get_personalized_recommendations(
     limit: int = Query(10, ge=1, le=50),
