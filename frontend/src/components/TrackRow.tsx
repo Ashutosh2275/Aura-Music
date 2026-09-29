@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Play, Pause, Heart } from 'lucide-react';
 import type { Track } from '../audio/types';
 import { usePlayerStore } from '../store/playerStore';
@@ -9,6 +10,7 @@ interface TrackRowProps {
 }
 
 export const TrackRow: React.FC<TrackRowProps> = ({ track, queueContext }) => {
+  const navigate = useNavigate();
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const status = usePlayerStore((s) => s.status);
   const playTrack = usePlayerStore((s) => s.playTrack);
@@ -32,6 +34,11 @@ export const TrackRow: React.FC<TrackRowProps> = ({ track, queueContext }) => {
     } else {
       playTrack(track, queueContext);
     }
+  };
+
+  const handleArtistClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/artist/${track.artist.id}`);
   };
 
   return (
@@ -67,7 +74,12 @@ export const TrackRow: React.FC<TrackRowProps> = ({ track, queueContext }) => {
           >
             {track.title}
           </p>
-          <p className="text-xs text-neutral-400 truncate mt-0.5">{track.artist.name}</p>
+          <button
+            onClick={handleArtistClick}
+            className="text-xs text-neutral-400 hover:text-emerald-400 truncate mt-0.5 text-left block"
+          >
+            {track.artist.name}
+          </button>
           <span className="text-[10px] text-neutral-500 truncate block mt-0.5">
             {track.license}
           </span>

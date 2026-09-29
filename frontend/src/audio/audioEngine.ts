@@ -15,9 +15,13 @@ class AudioEngine {
   private currentTrack: Track | null = null;
 
   constructor() {
-    this.audio = new Audio();
-    this.audio.preload = 'metadata';
-    this.setupListeners();
+    if (typeof Audio !== 'undefined') {
+      this.audio = new Audio();
+      this.audio.preload = 'metadata';
+      this.setupListeners();
+    } else {
+      this.audio = {} as HTMLAudioElement;
+    }
   }
 
   public setCallbacks(callbacks: AudioEngineCallbacks) {
@@ -26,6 +30,8 @@ class AudioEngine {
   }
 
   private setupListeners() {
+    if (!this.audio.addEventListener) return;
+
     this.audio.addEventListener('play', () => {
       this.callbacks?.onStatusChange('playing');
       this.updateMediaSessionPlaybackState('playing');
@@ -67,7 +73,7 @@ class AudioEngine {
   }
 
   private setupMediaSessionHandlers() {
-    if (!('mediaSession' in navigator)) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
 
     try {
       navigator.mediaSession.setActionHandler('play', () => {
@@ -110,45 +116,49 @@ class AudioEngine {
     this.currentTrack = track;
     this.callbacks?.onStatusChange('loading');
 
-    // Update Media Session Metadata for iOS lock screen and Control Center
     this.updateMediaSessionMetadata(track);
 
-    this.audio.src = track.audioUrl;
-    this.audio.load();
+    if (this.audio && typeof this.audio.load === 'function') {
+      this.audio.src = track.audioUrl;
+      this.audio.load();
 
-    try {
-      await this.audio.play();
-    } catch (err: any) {
-      // Handle user gesture requirement on Safari / iOS
-      if (err.name === 'NotAllowedError') {
-        console.warn('[AudioEngine] Autoplay prevented: user interaction required.');
-      } else {
-        console.error('[AudioEngine] Play request failed:', err);
+      try {
+        await this.audio.play();
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError') {
+          console.warn('[AudioEngine] Autoplay prevented: user interaction required.');
+        } else {
+          console.error('[AudioEngine] Play request failed:', err);
+        }
+        this.callbacks?.onError(err.message || 'Failed to start audio playback');
       }
-      this.callbacks?.onError(err.message || 'Failed to start audio playback');
     }
   }
 
   public async play(): Promise<void> {
-    try {
-      await this.audio.play();
-    } catch (err: any) {
-      console.error('[AudioEngine] Play failed:', err);
+    if (this.audio && typeof this.audio.play === 'function') {
+      try {
+        await this.audio.play();
+      } catch (err: any) {
+        console.error('[AudioEngine] Play failed:', err);
+      }
     }
   }
 
   public pause(): void {
-    this.audio.pause();
+    if (this.audio && typeof this.audio.pause === 'function') {
+      this.audio.pause();
+    }
   }
 
   public seekTo(seconds: number): void {
-    if (Number.isFinite(seconds)) {
+    if (this.audio && Number.isFinite(seconds)) {
       this.audio.currentTime = seconds;
     }
   }
 
   private updateMediaSessionMetadata(track: Track) {
-    if (!('mediaSession' in navigator)) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -165,30 +175,35 @@ class AudioEngine {
             ]
           : [],
       });
-    } catch (e) {
-      console.warn('[AudioEngine] Failed to set MediaMetadata:', e);
+    } catch {
+      // Ignore
     }
   }
 
   private updateMediaSessionPlaybackState(state: 'playing' | 'paused') {
-    if (!('mediaSession' in navigator)) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.playbackState = state;
-    } catch (e) {
+    } catch {
       // Ignore
     }
   }
 
   private updateMediaSessionPositionState(position: number, duration: number) {
-    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    if (
+      typeof navigator === 'undefined' ||
+      !('mediaSession' in navigator) ||
+      !('setPositionState' in navigator.mediaSession)
+    )
+      return;
     if (duration > 0 && position <= duration) {
       try {
         navigator.mediaSession.setPositionState({
           duration: duration,
-          playbackRate: this.audio.playbackRate,
+          playbackRate: this.audio.playbackRate || 1,
           position: position,
         });
-      } catch (e) {
+      } catch {
         // Ignore minor discrepancies
       }
     }

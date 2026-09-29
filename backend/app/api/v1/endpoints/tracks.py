@@ -2,9 +2,11 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List
 from backend.app.models.track import Track, Artist, Album, StreamInfo, TrackListResponse
 from backend.app.adapters.music_provider import PermittedCreativeCommonsProvider
+from backend.app.services.recommendation import ContentBasedRecommender
 
 router = APIRouter()
 provider = PermittedCreativeCommonsProvider()
+recommender = ContentBasedRecommender()
 
 
 @router.get("/tracks/{track_id}", response_model=Track)
@@ -27,6 +29,13 @@ async def get_stream(track_id: str):
             detail={"code": "STREAM_NOT_FOUND", "message": f"Stream for track '{track_id}' not found."},
         )
     return stream_info
+
+
+@router.get("/tracks/{track_id}/similar", response_model=List[Track])
+async def get_similar_tracks(track_id: str, limit: int = Query(5, ge=1, le=20)):
+    tracks = await provider.get_trending(limit=50)
+    recommender.fit(tracks)
+    return recommender.get_similar_tracks(track_id=track_id, limit=limit)
 
 
 @router.get("/artists/{artist_id}", response_model=Artist)

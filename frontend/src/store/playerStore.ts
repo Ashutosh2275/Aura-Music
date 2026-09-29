@@ -81,7 +81,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const recent = [track, ...get().recentlyPlayed.filter((t) => t.id !== track.id)].slice(0, 20);
     try {
       localStorage.setItem('aura_recent', JSON.stringify(recent));
-    } catch (e) {}
+    } catch {}
 
     set({
       currentTrack: track,
@@ -179,7 +179,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       : [...likes, trackId];
     try {
       localStorage.setItem('aura_likes', JSON.stringify(updated));
-    } catch (e) {}
+    } catch {}
     set({ likes: updated });
   },
 

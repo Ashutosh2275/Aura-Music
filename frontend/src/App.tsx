@@ -5,6 +5,8 @@ import { usePlayerStore } from './store/playerStore';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { LibraryPage } from './pages/LibraryPage';
+import { ArtistPage } from './pages/ArtistPage';
+import { AlbumPage } from './pages/AlbumPage';
 import { BottomNav } from './components/BottomNav';
 import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerModal } from './components/FullPlayerModal';
@@ -36,6 +38,8 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/library" element={<LibraryPage />} />
+              <Route path="/artist/:id" element={<ArtistPage />} />
+              <Route path="/album/:id" element={<AlbumPage />} />
             </Routes>
           </main>
 

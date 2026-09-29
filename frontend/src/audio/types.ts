@@ -20,6 +20,26 @@ export interface Track {
   tags?: string[];
 }
 
+export interface Artist {
+  id: string;
+  name: string;
+  bio?: string;
+  artworkUrl?: string;
+  tracks: Track[];
+}
+
+export interface Album {
+  id: string;
+  title: string;
+  artist: {
+    id: string;
+    name: string;
+  };
+  artworkUrl?: string;
+  tracks: Track[];
+  releaseDate?: string;
+}
+
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
 export interface PlayerState {

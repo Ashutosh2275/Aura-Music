@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown,
   Play,
@@ -20,6 +21,7 @@ interface FullPlayerModalProps {
 }
 
 export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({ isOpen, onClose }) => {
+  const navigate = useNavigate();
   const [showQueue, setShowQueue] = useState(false);
 
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -55,6 +57,18 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({ isOpen, onClos
 
   const liked = isLiked(currentTrack.id);
 
+  const handleArtistClick = () => {
+    onClose();
+    navigate(`/artist/${currentTrack.artist.id}`);
+  };
+
+  const handleAlbumClick = () => {
+    if (currentTrack.album?.id) {
+      onClose();
+      navigate(`/album/${currentTrack.album.id}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-neutral-950 flex flex-col justify-between p-6 pt-safe pb-safe overflow-y-auto animate-in fade-in slide-in-from-bottom duration-200">
       {/* Top Bar */}
@@ -71,9 +85,18 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({ isOpen, onClos
           <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
             Playing from Catalog
           </p>
-          <p className="text-xs font-medium text-neutral-300 truncate max-w-[200px] mx-auto">
-            {currentTrack.album?.title || 'Permitted Music Stream'}
-          </p>
+          {currentTrack.album?.id ? (
+            <button
+              onClick={handleAlbumClick}
+              className="text-xs font-medium text-neutral-300 hover:text-emerald-400 truncate max-w-[200px] mx-auto block"
+            >
+              {currentTrack.album.title}
+            </button>
+          ) : (
+            <p className="text-xs font-medium text-neutral-300 truncate max-w-[200px] mx-auto">
+              Permitted Music Stream
+            </p>
+          )}
         </div>
 
         <button
@@ -142,9 +165,12 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({ isOpen, onClos
                 <h2 className="text-xl sm:text-2xl font-bold text-neutral-100 truncate">
                   {currentTrack.title}
                 </h2>
-                <p className="text-sm sm:text-base text-neutral-400 truncate mt-0.5">
+                <button
+                  onClick={handleArtistClick}
+                  className="text-sm sm:text-base text-neutral-400 hover:text-emerald-400 truncate mt-0.5 text-left block"
+                >
                   {currentTrack.artist.name}
-                </p>
+                </button>
               </div>
               <button
                 onClick={() => toggleLike(currentTrack.id)}

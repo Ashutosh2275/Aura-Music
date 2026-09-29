@@ -26,6 +26,10 @@ class BaseRecommendationEngine(ABC):
     ) -> List[Track]:
         pass
 
+    @abstractmethod
+    def get_similar_tracks(self, track_id: str, limit: int = 5) -> List[Track]:
+        pass
+
 
 class ContentBasedRecommender(BaseRecommendationEngine):
     """
@@ -64,11 +68,9 @@ class ContentBasedRecommender(BaseRecommendationEngine):
         candidate_tracks: List[Track],
         limit: int = 10,
     ) -> List[Track]:
-        # If user has no history or model has no tracks, fallback to popular/trending
         if not user_history or self.track_features_matrix is None or not candidate_tracks:
             return candidate_tracks[:limit]
 
-        # Find known history indices
         history_indices = [
             self.track_id_to_idx[tid]
             for tid in user_history
@@ -78,12 +80,10 @@ class ContentBasedRecommender(BaseRecommendationEngine):
         if not history_indices:
             return candidate_tracks[:limit]
 
-        # Calculate mean user profile vector from history
         user_profile = np.asarray(
             self.track_features_matrix[history_indices].mean(axis=0)
         )
 
-        # Compute cosine similarity between user profile and all candidate tracks
         candidate_indices = [
             self.track_id_to_idx[t.id]
             for t in candidate_tracks
@@ -96,10 +96,21 @@ class ContentBasedRecommender(BaseRecommendationEngine):
         candidate_vectors = self.track_features_matrix[candidate_indices]
         sim_scores = cosine_similarity(user_profile, candidate_vectors).flatten()
 
-        # Rank candidates by descending similarity
         ranked_order = np.argsort(-sim_scores)
         recommended = [
             self.idx_to_track[candidate_indices[idx]]
             for idx in ranked_order[:limit]
         ]
         return recommended
+
+    def get_similar_tracks(self, track_id: str, limit: int = 5) -> List[Track]:
+        if self.track_features_matrix is None or track_id not in self.track_id_to_idx:
+            return []
+
+        idx = self.track_id_to_idx[track_id]
+        track_vec = self.track_features_matrix[idx]
+        sim_scores = cosine_similarity(track_vec, self.track_features_matrix).flatten()
+
+        sim_scores[idx] = -1.0  # Exclude self
+        ranked = np.argsort(-sim_scores)
+        return [self.idx_to_track[i] for i in ranked[:limit] if sim_scores[i] >= 0]

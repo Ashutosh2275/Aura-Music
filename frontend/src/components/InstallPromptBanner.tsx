@@ -1,20 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Share, PlusSquare, X } from 'lucide-react';
 
 export const InstallPromptBanner: React.FC = () => {
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(true);
-
-  useEffect(() => {
-    // Check if running as installed standalone PWA
-    const standalone =
+  const [isStandalone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return (
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
+      (window.navigator as any).standalone === true
+    );
+  });
 
-    const dismissed = localStorage.getItem('aura_pwa_prompt_dismissed');
-    if (dismissed) setIsDismissed(true);
-  }, []);
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('aura_pwa_prompt_dismissed') === 'true';
+  });
 
   if (isStandalone || isDismissed) return null;
 
