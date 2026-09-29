@@ -148,8 +148,8 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({ isOpen, onClos
         /* Standard Player View */
         <>
           {/* Artwork */}
-          <div className="my-auto py-6 flex flex-col items-center">
-            <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-2xl overflow-hidden shadow-2xl bg-neutral-900 border border-neutral-800/60">
+          <div className="my-auto py-2 flex flex-col items-center">
+            <div className="relative w-[68vw] max-w-[280px] aspect-square max-h-[35vh] rounded-2xl overflow-hidden shadow-2xl bg-neutral-900 border border-neutral-800/60">
               <img
                 src={currentTrack.artworkUrl || 'https://via.placeholder.com/400'}
                 alt={currentTrack.title}

@@ -6,16 +6,37 @@
 
 /* iOS Safe Area Padding Utilities for iPhone 16 */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 16px);
+  padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 44px);
+  padding-top: max(env(safe-area-inset-top, 44px), 24px);
 }
 
-/* Prevent unwanted pull-to-refresh / rubber banding in PWA standalone mode */
+.mb-safe {
+  margin-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
+}
+
+/* Mobile ergonomics & touch optimizations */
 html, body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Smooth momentum scrolling for iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Clean scrollbar hiding */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

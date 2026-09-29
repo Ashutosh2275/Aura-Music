@@ -12,13 +12,30 @@ function getAuthHeaders(): Record<string, string> {
   };
 }
 
+function mapBackendTrack(raw: any): Track {
+  return {
+    id: raw.id,
+    title: raw.title,
+    artist: raw.artist,
+    album: raw.album,
+    duration: raw.duration ?? raw.duration_seconds ?? 0,
+    audioUrl: raw.audioUrl ?? raw.audio_url,
+    artworkUrl: raw.artworkUrl ?? raw.artwork_url,
+    license: raw.license,
+    sourceProvider: raw.sourceProvider ?? raw.source_provider ?? 'creative_commons',
+    genre: raw.genre ?? [],
+    tags: raw.tags ?? [],
+  };
+}
+
 export async function fetchTrendingTracks(): Promise<Track[]> {
   try {
     const res = await fetch(`${API_BASE}/trending`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Network error');
-    return await res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data.map(mapBackendTrack) : PERMITTED_TRACKS;
   } catch {
     return PERMITTED_TRACKS;
   }
@@ -30,7 +47,8 @@ export async function fetchRecommendations(): Promise<Track[]> {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Network error');
-    return await res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data.map(mapBackendTrack) : [PERMITTED_TRACKS[2], PERMITTED_TRACKS[0]];
   } catch {
     return [PERMITTED_TRACKS[2], PERMITTED_TRACKS[0], PERMITTED_TRACKS[3]];
   }
@@ -44,7 +62,7 @@ export async function searchCatalog(query: string): Promise<Track[]> {
     });
     if (!res.ok) throw new Error('Network error');
     const data = await res.json();
-    return data.tracks || [];
+    return Array.isArray(data.tracks) ? data.tracks.map(mapBackendTrack) : [];
   } catch {
     const q = query.toLowerCase();
     return PERMITTED_TRACKS.filter(
@@ -62,7 +80,11 @@ export async function fetchArtist(artistId: string): Promise<Artist | null> {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Network error');
-    return await res.json();
+    const data = await res.json();
+    return {
+      ...data,
+      tracks: Array.isArray(data.tracks) ? data.tracks.map(mapBackendTrack) : [],
+    };
   } catch {
     const artistTracks = PERMITTED_TRACKS.filter((t) => t.artist.id === artistId);
     if (artistTracks.length === 0) return null;
@@ -82,7 +104,11 @@ export async function fetchAlbum(albumId: string): Promise<Album | null> {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Network error');
-    return await res.json();
+    const data = await res.json();
+    return {
+      ...data,
+      tracks: Array.isArray(data.tracks) ? data.tracks.map(mapBackendTrack) : [],
+    };
   } catch {
     const albumTracks = PERMITTED_TRACKS.filter((t) => t.album && t.album.id === albumId);
     if (albumTracks.length === 0) return null;

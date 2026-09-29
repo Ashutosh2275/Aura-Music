@@ -72,5 +72,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Allow iPhone 16 on local Wi-Fi to test directly from Windows 11
     port: 5173,
+    proxy: {
+      '/api/v1': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
   },
 });
