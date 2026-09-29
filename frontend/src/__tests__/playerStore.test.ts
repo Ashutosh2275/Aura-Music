@@ -16,6 +16,23 @@ import { PERMITTED_TRACKS } from '../services/mockData';
   pause = vi.fn();
 } as any;
 
+const storageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value.toString();
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+  };
+})();
+Object.defineProperty(globalThis, 'localStorage', { value: storageMock, writable: true });
+
 describe('Player Store & Queue Management', () => {
   beforeEach(() => {
     usePlayerStore.setState({
@@ -83,13 +100,13 @@ describe('Player Store & Queue Management', () => {
   });
 
   it('toggles likes correctly', () => {
-    const trackId = PERMITTED_TRACKS[0].id;
-    expect(usePlayerStore.getState().isLiked(trackId)).toBe(false);
+    const track = PERMITTED_TRACKS[0];
+    expect(usePlayerStore.getState().isLiked(track.id)).toBe(false);
 
-    usePlayerStore.getState().toggleLike(trackId);
-    expect(usePlayerStore.getState().isLiked(trackId)).toBe(true);
+    usePlayerStore.getState().toggleLike(track);
+    expect(usePlayerStore.getState().isLiked(track.id)).toBe(true);
 
-    usePlayerStore.getState().toggleLike(trackId);
-    expect(usePlayerStore.getState().isLiked(trackId)).toBe(false);
+    usePlayerStore.getState().toggleLike(track);
+    expect(usePlayerStore.getState().isLiked(track.id)).toBe(false);
   });
 });

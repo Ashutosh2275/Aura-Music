@@ -90,7 +90,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({ track, queueContext }) => {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleLike(track.id);
+            toggleLike(track);
           }}
           className="p-1.5 text-neutral-500 hover:text-red-500 active:scale-90 transition"
           aria-label={liked ? 'Unlike' : 'Like'}

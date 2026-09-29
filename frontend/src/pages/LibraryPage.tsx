@@ -1,17 +1,27 @@
 import React, { useState } from 'react';
-import { Heart, Play, Trash2, Shield, ListPlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Heart, Play, Shuffle, Plus, ListMusic, Clock, ChevronRight } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
-import { PERMITTED_TRACKS } from '../services/mockData';
 import { TrackRow } from '../components/TrackRow';
-import { deleteUserData } from '../services/api';
+
+type LibraryTab = 'likes' | 'playlists' | 'recents';
+
+function getRandomIndex(length: number): number {
+  return Math.floor(Math.random() * length);
+}
 
 export const LibraryPage: React.FC = () => {
-  const likes = usePlayerStore((s) => s.likes);
-  const playTrack = usePlayerStore((s) => s.playTrack);
-  const [deletedSuccess, setDeletedSuccess] = useState(false);
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<LibraryTab>('likes');
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState('');
 
-  // Match liked IDs with catalog
-  const likedTracks = PERMITTED_TRACKS.filter((t) => likes.includes(t.id));
+  const likedTracks = usePlayerStore((s) => s.likedTracks);
+  const playlists = usePlayerStore((s) => s.playlists);
+  const recentlyPlayed = usePlayerStore((s) => s.recentlyPlayed);
+  const playTrack = usePlayerStore((s) => s.playTrack);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const createPlaylist = usePlayerStore((s) => s.createPlaylist);
 
   const handlePlayAllLikes = () => {
     if (likedTracks.length > 0) {
@@ -19,116 +29,195 @@ export const LibraryPage: React.FC = () => {
     }
   };
 
-  const handleDeleteAllData = async () => {
-    if (
-      window.confirm(
-        'Privacy Right to Erasure:\n\nAre you sure you want to permanently delete all your likes, history, and pseudonymous interaction data?'
-      )
-    ) {
-      await deleteUserData();
-      setDeletedSuccess(true);
-      setTimeout(() => setDeletedSuccess(false), 4000);
-      window.location.reload();
+  const handleShufflePlayLikes = () => {
+    if (likedTracks.length > 0) {
+      toggleShuffle();
+      const randIdx = getRandomIndex(likedTracks.length);
+      playTrack(likedTracks[randIdx], likedTracks);
     }
   };
 
+  const handleCreatePlaylist = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlaylistTitle.trim()) return;
+    const pl = createPlaylist(newPlaylistTitle.trim());
+    setNewPlaylistTitle('');
+    setIsCreatingPlaylist(false);
+    navigate(`/playlist/${pl.id}`);
+  };
+
   return (
-    <div className="pb-36 pt-4 max-w-lg mx-auto">
-      {/* Header */}
-      <div className="px-5 mb-5">
-        <h1 className="text-2xl font-black tracking-tight text-white">Your Library</h1>
-        <p className="text-xs text-neutral-400 mt-0.5">Stored pseudonomously on your device</p>
-      </div>
-
-      {/* Liked Tracks Header Card */}
-      <div className="mx-4 mb-6 p-4 rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-900/60 border border-neutral-800 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
-              <Heart size={24} className="fill-red-500" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-neutral-100">Liked Songs</h2>
-              <p className="text-xs text-neutral-400">{likedTracks.length} tracks favorited</p>
-            </div>
-          </div>
-
-          {likedTracks.length > 0 && (
-            <button
-              onClick={handlePlayAllLikes}
-              className="w-11 h-11 rounded-full bg-emerald-500 text-neutral-950 flex items-center justify-center hover:bg-emerald-400 active:scale-95 shadow-md shadow-emerald-500/20 transition"
-              aria-label="Play all liked songs"
-            >
-              <Play size={20} fill="currentColor" className="ml-0.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Liked Tracks List */}
-      <section className="px-4 mb-8">
-        {likedTracks.length > 0 ? (
-          <div className="space-y-1">
-            {likedTracks.map((track) => (
-              <TrackRow key={`liked-${track.id}`} track={track} queueContext={likedTracks} />
-            ))}
-          </div>
-        ) : (
-          <div className="py-8 text-center bg-neutral-900/30 rounded-xl border border-neutral-900">
-            <p className="text-sm text-neutral-400">No liked songs yet</p>
-            <p className="text-xs text-neutral-600 mt-1">Tap the heart on any track to save it here</p>
-          </div>
-        )}
-      </section>
-
-      {/* Playlists Placeholder */}
-      <section className="px-4 mb-8">
-        <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-neutral-300">Playlists</h3>
-          <button className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium">
-            <ListPlus size={14} />
-            <span>New Playlist</span>
-          </button>
+    <div className="pb-44 pt-3 max-w-lg mx-auto text-white font-sans px-4">
+      {/* Page Title */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-white">Your Library</h1>
+          <p className="text-xs text-neutral-400 mt-0.5">Saved locally and synced to your account</p>
         </div>
 
-        <div className="p-4 rounded-xl bg-neutral-900/40 border border-neutral-800/60 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-neutral-200">Favorites & Relax</p>
-            <p className="text-xs text-neutral-500">Auto-generated • Offline ready</p>
-          </div>
-          <span className="text-xs text-neutral-500">{likedTracks.length} items</span>
-        </div>
-      </section>
-
-      {/* Privacy Control & Data Deletion Panel */}
-      <section className="px-4">
-        <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-3">
-          <div className="flex items-center gap-2 text-neutral-300">
-            <Shield size={16} className="text-emerald-400" />
-            <h4 className="text-xs font-bold uppercase tracking-wider">Privacy & Right to Erasure</h4>
-          </div>
-
-          <p className="text-[11px] text-neutral-400 leading-relaxed">
-            Aura collects zero personally identifiable information (no name, email, phone, location,
-            advertising IDs, or trackers). You can permanently purge all stored preferences,
-            playlists, and telemetry at any time.
-          </p>
-
-          {deletedSuccess && (
-            <div className="p-2 rounded bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs">
-              All user data and pseudonymous history successfully purged.
-            </div>
-          )}
-
+        {activeTab === 'playlists' && (
           <button
-            onClick={handleDeleteAllData}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/40 hover:bg-red-950/70 border border-red-800/50 text-red-400 text-xs font-semibold transition active:scale-95"
+            onClick={() => setIsCreatingPlaylist(true)}
+            className="py-1.5 px-3 rounded-full bg-white text-neutral-950 text-xs font-bold flex items-center gap-1.5 hover:bg-neutral-100 transition active:scale-95"
           >
-            <Trash2 size={14} />
-            <span>Delete All My Data & Reset</span>
+            <Plus size={14} />
+            <span>New</span>
           </button>
+        )}
+      </div>
+
+      {/* Segmented Tab Controls */}
+      <div className="grid grid-cols-3 p-1 mb-5 rounded-2xl bg-neutral-900/80 border border-white/10">
+        <button
+          onClick={() => setActiveTab('likes')}
+          className={`py-2 text-xs font-semibold rounded-xl transition ${
+            activeTab === 'likes' ? 'bg-white text-neutral-950 shadow-sm' : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          Liked ({likedTracks.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('playlists')}
+          className={`py-2 text-xs font-semibold rounded-xl transition ${
+            activeTab === 'playlists' ? 'bg-white text-neutral-950 shadow-sm' : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          Playlists ({playlists.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('recents')}
+          className={`py-2 text-xs font-semibold rounded-xl transition ${
+            activeTab === 'recents' ? 'bg-white text-neutral-950 shadow-sm' : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          Recent ({recentlyPlayed.length})
+        </button>
+      </div>
+
+      {/* New Playlist Modal / Box */}
+      {isCreatingPlaylist && (
+        <div className="mb-5 p-4 rounded-2xl bg-neutral-900/90 border border-white/15 backdrop-blur-xl shadow-xl">
+          <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-2">Create New Playlist</h3>
+          <form onSubmit={handleCreatePlaylist} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Playlist name..."
+              value={newPlaylistTitle}
+              onChange={(e) => setNewPlaylistTitle(e.target.value)}
+              autoFocus
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-white/10 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-white/30"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2.5 rounded-xl bg-white text-neutral-950 font-bold text-xs hover:bg-neutral-100"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCreatingPlaylist(false)}
+              className="px-3 py-2.5 rounded-xl bg-white/5 text-neutral-400 font-semibold text-xs hover:text-white"
+            >
+              Cancel
+            </button>
+          </form>
         </div>
-      </section>
+      )}
+
+      {/* Tab: Liked Songs */}
+      {activeTab === 'likes' && (
+        <div>
+          {likedTracks.length > 0 && (
+            <div className="mb-4 flex items-center gap-3">
+              <button
+                onClick={handlePlayAllLikes}
+                className="flex-1 py-3 px-4 rounded-2xl bg-white text-neutral-950 font-bold text-xs flex items-center justify-center gap-2 hover:bg-neutral-100 active:scale-95 shadow-md transition"
+              >
+                <Play size={15} fill="currentColor" />
+                <span>Play All Likes</span>
+              </button>
+              <button
+                onClick={handleShufflePlayLikes}
+                className="py-3 px-4 rounded-2xl bg-white/5 border border-white/10 text-white font-semibold text-xs flex items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition"
+              >
+                <Shuffle size={15} />
+                <span>Shuffle</span>
+              </button>
+            </div>
+          )}
+
+          {likedTracks.length > 0 ? (
+            <div className="space-y-1.5">
+              {likedTracks.map((track) => (
+                <TrackRow key={`liked-${track.id}`} track={track} queueContext={likedTracks} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-16 text-center bg-neutral-900/30 rounded-2xl border border-white/5">
+              <Heart size={32} className="mx-auto text-neutral-600 mb-2" />
+              <p className="text-sm font-semibold text-neutral-300">No liked songs yet</p>
+              <p className="text-xs text-neutral-500 mt-1 max-w-[240px] mx-auto">
+                Tap the heart button on any track to save it directly to your library.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Playlists */}
+      {activeTab === 'playlists' && (
+        <div className="space-y-2">
+          {playlists.length > 0 ? (
+            playlists.map((pl) => (
+              <div
+                key={pl.id}
+                onClick={() => navigate(`/playlist/${pl.id}`)}
+                className="p-3 rounded-2xl bg-neutral-900/60 border border-white/5 hover:border-white/15 flex items-center justify-between gap-3 cursor-pointer hover:bg-white/5 transition group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-neutral-800 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
+                    {pl.artworkUrl ? (
+                      <img src={pl.artworkUrl} alt={pl.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <ListMusic size={22} className="text-neutral-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-white truncate">{pl.title}</p>
+                    <p className="text-xs text-neutral-400 mt-0.5">{pl.tracks.length} tracks</p>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-neutral-500 group-hover:text-white transition shrink-0" />
+              </div>
+            ))
+          ) : (
+            <div className="py-16 text-center bg-neutral-900/30 rounded-2xl border border-white/5">
+              <ListMusic size={32} className="mx-auto text-neutral-600 mb-2" />
+              <p className="text-sm font-semibold text-neutral-300">No playlists created yet</p>
+              <p className="text-xs text-neutral-500 mt-1">Tap "+ New" above to organize your music.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Recently Played */}
+      {activeTab === 'recents' && (
+        <div>
+          {recentlyPlayed.length > 0 ? (
+            <div className="space-y-1.5">
+              {recentlyPlayed.map((track) => (
+                <TrackRow key={`recent-lib-${track.id}`} track={track} queueContext={recentlyPlayed} />
+              ))}
+            </div>
+          ) : (
+            <div className="py-16 text-center bg-neutral-900/30 rounded-2xl border border-white/5">
+              <Clock size={32} className="mx-auto text-neutral-600 mb-2" />
+              <p className="text-sm font-semibold text-neutral-300">No listening history yet</p>
+              <p className="text-xs text-neutral-500 mt-1">Songs you play will appear here.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

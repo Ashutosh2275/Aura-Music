@@ -40,6 +40,16 @@ export interface Album {
   releaseDate?: string;
 }
 
+export interface Playlist {
+  id: string;
+  title: string;
+  description?: string;
+  artworkUrl?: string;
+  tracks: Track[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
 export interface PlayerState {

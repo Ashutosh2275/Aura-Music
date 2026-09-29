@@ -1,11 +1,20 @@
 import { create } from 'zustand';
-import type { Track, PlayerState, RepeatMode, PlaybackStatus } from '../audio/types';
+import type { Track, Playlist, PlayerState, RepeatMode, PlaybackStatus } from '../audio/types';
 import { audioEngine } from '../audio/audioEngine';
 import {
-  initAnonymousAuth,
   syncLikeToFirestore,
   syncRecentToFirestore,
+  fetchLikedTracksFromFirestore,
+  fetchRecentTracksFromFirestore,
+  fetchPlaylistsFromFirestore,
+  savePlaylistToFirestore,
+  deletePlaylistFromFirestore,
 } from '../services/firebase';
+import {
+  startPlaybackSession,
+  pausePlaybackSession,
+  setRemoteSupersededCallback,
+} from '../services/session';
 
 interface PlayerActions {
   initialize: () => void;
@@ -16,10 +25,19 @@ interface PlayerActions {
   seekTo: (seconds: number) => void;
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
-  toggleLike: (trackId: string) => void;
+  toggleLike: (track: Track) => void;
   isLiked: (trackId: string) => boolean;
+  createPlaylist: (title: string, description?: string) => Playlist;
+  deletePlaylist: (playlistId: string) => void;
+  renamePlaylist: (playlistId: string, newTitle: string) => void;
+  addTrackToPlaylist: (playlistId: string, track: Track) => void;
+  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+  dismissSupersededNotice: () => void;
   recentlyPlayed: Track[];
   likes: string[];
+  likedTracks: Track[];
+  playlists: Playlist[];
+  supersededNotice: boolean;
 }
 
 export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => ({
@@ -35,21 +53,33 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   error: null,
   recentlyPlayed: [],
   likes: [],
+  likedTracks: [],
+  playlists: [],
+  supersededNotice: false,
 
   initialize: () => {
     // 1. Connect Audio Engine events to Player Store
     audioEngine.setCallbacks({
       onStatusChange: (status: PlaybackStatus) => {
         set({ status });
+        const { currentTrack } = get();
+        if (currentTrack) {
+          if (status === 'playing') {
+            startPlaybackSession(currentTrack.id);
+          } else if (status === 'paused' || status === 'idle') {
+            pausePlaybackSession(currentTrack.id);
+          }
+        }
       },
       onTimeUpdate: (position: number, duration: number) => {
         set({ position, duration });
       },
       onTrackEnded: () => {
-        const { repeatMode, skipNext } = get();
+        const { repeatMode, skipNext, currentTrack } = get();
+        if (currentTrack) pausePlaybackSession(currentTrack.id);
+
         if (repeatMode === 'track') {
-          const current = get().currentTrack;
-          if (current) audioEngine.loadAndPlay(current);
+          if (currentTrack) audioEngine.loadAndPlay(currentTrack);
         } else {
           skipNext();
         }
@@ -65,19 +95,61 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       },
     });
 
-    // 2. Hydrate local cache
+    // 2. Register single-device superseded callback
+    setRemoteSupersededCallback(() => {
+      set({ supersededNotice: true, status: 'paused' });
+    });
+
+    // 3. Hydrate local cache
     try {
       const savedLikes = localStorage.getItem('aura_likes');
       if (savedLikes) set({ likes: JSON.parse(savedLikes) });
 
+      const savedLikedTracks = localStorage.getItem('aura_liked_tracks');
+      if (savedLikedTracks) set({ likedTracks: JSON.parse(savedLikedTracks) });
+
       const savedRecent = localStorage.getItem('aura_recent');
       if (savedRecent) set({ recentlyPlayed: JSON.parse(savedRecent) });
+
+      const savedPlaylists = localStorage.getItem('aura_playlists');
+      if (savedPlaylists) set({ playlists: JSON.parse(savedPlaylists) });
     } catch {}
 
-    // 3. Initialize Firebase Anonymous Auth in background
-    if (typeof window !== 'undefined') {
-      initAnonymousAuth().catch(() => {});
-    }
+    // 4. Hydrate from Firestore in background
+    fetchLikedTracksFromFirestore()
+      .then((tracks) => {
+        if (tracks.length > 0) {
+          set({
+            likedTracks: tracks,
+            likes: tracks.map((t) => t.id),
+          });
+          localStorage.setItem('aura_likes', JSON.stringify(tracks.map((t) => t.id)));
+          localStorage.setItem('aura_liked_tracks', JSON.stringify(tracks));
+        }
+      })
+      .catch(() => {});
+
+    fetchRecentTracksFromFirestore()
+      .then((tracks) => {
+        if (tracks.length > 0) {
+          set({ recentlyPlayed: tracks });
+          localStorage.setItem('aura_recent', JSON.stringify(tracks));
+        }
+      })
+      .catch(() => {});
+
+    fetchPlaylistsFromFirestore()
+      .then((pls) => {
+        if (pls.length > 0) {
+          set({ playlists: pls });
+          localStorage.setItem('aura_playlists', JSON.stringify(pls));
+        }
+      })
+      .catch(() => {});
+  },
+
+  dismissSupersededNotice: () => {
+    set({ supersededNotice: false });
   },
 
   playTrack: (track: Track, newQueue?: Track[]) => {
@@ -85,8 +157,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const trackIndex = activeQueue.findIndex((t) => t.id === track.id);
     const safeIndex = trackIndex >= 0 ? trackIndex : 0;
 
-    // Update recently played locally
-    const recent = [track, ...get().recentlyPlayed.filter((t) => t.id !== track.id)].slice(0, 20);
+    // Update recently played
+    const recent = [track, ...get().recentlyPlayed.filter((t) => t.id !== track.id)].slice(0, 30);
     try {
       localStorage.setItem('aura_recent', JSON.stringify(recent));
     } catch {}
@@ -99,10 +171,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       duration: track.duration,
       error: null,
       recentlyPlayed: recent,
+      supersededNotice: false,
     });
 
-    // Sync to Firestore
+    // Sync to Firestore & Session
     syncRecentToFirestore(track).catch(() => {});
+    startPlaybackSession(track.id);
 
     audioEngine.loadAndPlay(track);
   },
@@ -115,8 +189,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     }
     if (status === 'playing') {
       audioEngine.pause();
+      if (currentTrack) pausePlaybackSession(currentTrack.id);
     } else {
       audioEngine.play();
+      if (currentTrack) startPlaybackSession(currentTrack.id);
     }
   },
 
@@ -145,6 +221,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const nextTrack = queue[nextIndex];
     if (nextTrack) {
       set({ queueIndex: nextIndex, currentTrack: nextTrack, position: 0 });
+      startPlaybackSession(nextTrack.id);
       audioEngine.loadAndPlay(nextTrack);
     }
   },
@@ -162,6 +239,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const prevTrack = queue[prevIndex];
     if (prevTrack) {
       set({ queueIndex: prevIndex, currentTrack: prevTrack, position: 0 });
+      startPlaybackSession(prevTrack.id);
       audioEngine.loadAndPlay(prevTrack);
     }
   },
@@ -181,24 +259,115 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     set({ repeatMode: next });
   },
 
-  toggleLike: (trackId: string) => {
-    const { likes } = get();
-    const isNowLiked = !likes.includes(trackId);
-    const updated = isNowLiked
-      ? [...likes, trackId]
-      : likes.filter((id) => id !== trackId);
+  toggleLike: (track: Track) => {
+    const { likes, likedTracks } = get();
+    const isNowLiked = !likes.includes(track.id);
+
+    const updatedLikes = isNowLiked
+      ? [...likes, track.id]
+      : likes.filter((id) => id !== track.id);
+
+    const updatedLikedTracks = isNowLiked
+      ? [track, ...likedTracks.filter((t) => t.id !== track.id)]
+      : likedTracks.filter((t) => t.id !== track.id);
 
     try {
-      localStorage.setItem('aura_likes', JSON.stringify(updated));
+      localStorage.setItem('aura_likes', JSON.stringify(updatedLikes));
+      localStorage.setItem('aura_liked_tracks', JSON.stringify(updatedLikedTracks));
     } catch {}
 
-    set({ likes: updated });
+    set({ likes: updatedLikes, likedTracks: updatedLikedTracks });
 
     // Sync to Firestore
-    syncLikeToFirestore(trackId, isNowLiked).catch(() => {});
+    syncLikeToFirestore(track, isNowLiked).catch(() => {});
   },
 
   isLiked: (trackId: string) => {
     return get().likes.includes(trackId);
+  },
+
+  createPlaylist: (title: string, description?: string) => {
+    const newPlaylist: Playlist = {
+      id: 'pl_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      title: title.trim() || 'My Playlist',
+      description: description?.trim() || '',
+      tracks: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = [newPlaylist, ...get().playlists];
+    set({ playlists: updated });
+    try {
+      localStorage.setItem('aura_playlists', JSON.stringify(updated));
+    } catch {}
+
+    savePlaylistToFirestore(newPlaylist).catch(() => {});
+    return newPlaylist;
+  },
+
+  deletePlaylist: (playlistId: string) => {
+    const updated = get().playlists.filter((p) => p.id !== playlistId);
+    set({ playlists: updated });
+    try {
+      localStorage.setItem('aura_playlists', JSON.stringify(updated));
+    } catch {}
+
+    deletePlaylistFromFirestore(playlistId).catch(() => {});
+  },
+
+  renamePlaylist: (playlistId: string, newTitle: string) => {
+    const updated = get().playlists.map((p) => {
+      if (p.id === playlistId) {
+        const modified = { ...p, title: newTitle.trim(), updatedAt: new Date().toISOString() };
+        savePlaylistToFirestore(modified).catch(() => {});
+        return modified;
+      }
+      return p;
+    });
+    set({ playlists: updated });
+    try {
+      localStorage.setItem('aura_playlists', JSON.stringify(updated));
+    } catch {}
+  },
+
+  addTrackToPlaylist: (playlistId: string, track: Track) => {
+    const updated = get().playlists.map((p) => {
+      if (p.id === playlistId) {
+        if (p.tracks.some((t) => t.id === track.id)) return p;
+        const modified = {
+          ...p,
+          tracks: [...p.tracks, track],
+          artworkUrl: p.artworkUrl || track.artworkUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        savePlaylistToFirestore(modified).catch(() => {});
+        return modified;
+      }
+      return p;
+    });
+    set({ playlists: updated });
+    try {
+      localStorage.setItem('aura_playlists', JSON.stringify(updated));
+    } catch {}
+  },
+
+  removeTrackFromPlaylist: (playlistId: string, trackId: string) => {
+    const updated = get().playlists.map((p) => {
+      if (p.id === playlistId) {
+        const modified = {
+          ...p,
+          tracks: p.tracks.filter((t) => t.id !== trackId),
+          updatedAt: new Date().toISOString(),
+        };
+        savePlaylistToFirestore(modified).catch(() => {});
+        return modified;
+      }
+      return p;
+    });
+    set({ playlists: updated });
+    try {
+      localStorage.setItem('aura_playlists', JSON.stringify(updated));
+    } catch {}
   },
 }));
