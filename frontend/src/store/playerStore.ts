@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import type { Track, PlayerState, RepeatMode, PlaybackStatus } from '../audio/types';
 import { audioEngine } from '../audio/audioEngine';
+import {
+  initAnonymousAuth,
+  syncLikeToFirestore,
+  syncRecentToFirestore,
+} from '../services/firebase';
 
 interface PlayerActions {
   initialize: () => void;
@@ -32,7 +37,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   likes: [],
 
   initialize: () => {
-    // Connect audio engine events to the player store
+    // 1. Connect Audio Engine events to Player Store
     audioEngine.setCallbacks({
       onStatusChange: (status: PlaybackStatus) => {
         set({ status });
@@ -60,15 +65,18 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       },
     });
 
-    // Hydrate likes & recently played from localStorage
+    // 2. Hydrate local cache
     try {
       const savedLikes = localStorage.getItem('aura_likes');
       if (savedLikes) set({ likes: JSON.parse(savedLikes) });
 
       const savedRecent = localStorage.getItem('aura_recent');
       if (savedRecent) set({ recentlyPlayed: JSON.parse(savedRecent) });
-    } catch (e) {
-      console.warn('[PlayerStore] Local storage hydration error:', e);
+    } catch {}
+
+    // 3. Initialize Firebase Anonymous Auth in background
+    if (typeof window !== 'undefined') {
+      initAnonymousAuth().catch(() => {});
     }
   },
 
@@ -77,7 +85,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const trackIndex = activeQueue.findIndex((t) => t.id === track.id);
     const safeIndex = trackIndex >= 0 ? trackIndex : 0;
 
-    // Update recently played
+    // Update recently played locally
     const recent = [track, ...get().recentlyPlayed.filter((t) => t.id !== track.id)].slice(0, 20);
     try {
       localStorage.setItem('aura_recent', JSON.stringify(recent));
@@ -92,6 +100,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       error: null,
       recentlyPlayed: recent,
     });
+
+    // Sync to Firestore
+    syncRecentToFirestore(track).catch(() => {});
 
     audioEngine.loadAndPlay(track);
   },
@@ -126,7 +137,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         if (repeatMode === 'queue') {
           nextIndex = 0;
         } else {
-          // Reached end of queue without repeat
           return;
         }
       }
@@ -142,7 +152,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   skipPrevious: () => {
     const { queue, queueIndex, position } = get();
     if (position > 3) {
-      // If played for > 3s, restart track
       audioEngine.seekTo(0);
       set({ position: 0 });
       return;
@@ -174,13 +183,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
   toggleLike: (trackId: string) => {
     const { likes } = get();
-    const updated = likes.includes(trackId)
-      ? likes.filter((id) => id !== trackId)
-      : [...likes, trackId];
+    const isNowLiked = !likes.includes(trackId);
+    const updated = isNowLiked
+      ? [...likes, trackId]
+      : likes.filter((id) => id !== trackId);
+
     try {
       localStorage.setItem('aura_likes', JSON.stringify(updated));
     } catch {}
+
     set({ likes: updated });
+
+    // Sync to Firestore
+    syncLikeToFirestore(trackId, isNowLiked).catch(() => {});
   },
 
   isLiked: (trackId: string) => {

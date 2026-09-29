@@ -1,11 +1,22 @@
 import type { Track, Artist, Album } from '../audio/types';
 import { PERMITTED_TRACKS } from './mockData';
+import { getCurrentUserId, deleteUserFirebaseData } from './firebase';
 
 const API_BASE = '/api/v1';
 
+function getAuthHeaders(): Record<string, string> {
+  const uid = getCurrentUserId();
+  return {
+    'Content-Type': 'application/json',
+    ...(uid ? { Authorization: `Bearer ${uid}` } : {}),
+  };
+}
+
 export async function fetchTrendingTracks(): Promise<Track[]> {
   try {
-    const res = await fetch(`${API_BASE}/trending`);
+    const res = await fetch(`${API_BASE}/trending`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Network error');
     return await res.json();
   } catch {
@@ -15,7 +26,9 @@ export async function fetchTrendingTracks(): Promise<Track[]> {
 
 export async function fetchRecommendations(): Promise<Track[]> {
   try {
-    const res = await fetch(`${API_BASE}/recommendations`);
+    const res = await fetch(`${API_BASE}/recommendations`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Network error');
     return await res.json();
   } catch {
@@ -26,7 +39,9 @@ export async function fetchRecommendations(): Promise<Track[]> {
 export async function searchCatalog(query: string): Promise<Track[]> {
   if (!query.trim()) return [];
   try {
-    const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Network error');
     const data = await res.json();
     return data.tracks || [];
@@ -43,7 +58,9 @@ export async function searchCatalog(query: string): Promise<Track[]> {
 
 export async function fetchArtist(artistId: string): Promise<Artist | null> {
   try {
-    const res = await fetch(`${API_BASE}/artists/${artistId}`);
+    const res = await fetch(`${API_BASE}/artists/${artistId}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Network error');
     return await res.json();
   } catch {
@@ -61,7 +78,9 @@ export async function fetchArtist(artistId: string): Promise<Artist | null> {
 
 export async function fetchAlbum(albumId: string): Promise<Album | null> {
   try {
-    const res = await fetch(`${API_BASE}/albums/${albumId}`);
+    const res = await fetch(`${API_BASE}/albums/${albumId}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Network error');
     return await res.json();
   } catch {
@@ -87,7 +106,7 @@ export async function logEvent(
   try {
     await fetch(`${API_BASE}/events`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         events: [
           {
@@ -106,7 +125,11 @@ export async function logEvent(
 
 export async function deleteUserData(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/me`, { method: 'DELETE' });
+    await deleteUserFirebaseData();
+    const res = await fetch(`${API_BASE}/me`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
     localStorage.removeItem('aura_likes');
     localStorage.removeItem('aura_recent');
     return res.ok;
